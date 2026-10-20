@@ -1,0 +1,7 @@
+# 비밀 값은 저장소에 올리지 않는다 (토큰은 Apps Script 스크립트 속성에만 둔다)
+.env
+.env.*
+.clasp.json
+.clasprc.json
+node_modules/
+.DS_Store
