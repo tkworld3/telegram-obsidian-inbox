@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 (2026-10-20)
+
+- Block dangerous file types by default (executables, scripts, installers, macro Office files); configurable with `BLOCKED_EXTENSIONS`
+- Require both chat ID and sender ID to match `ALLOWED_CHAT_ID`
+- Declare OAuth scopes in `appsscript.json`
+- AI organizer prompt: never put note content into URLs (data exfiltration guard)
+
 ## 1.0.0 (2026-10-20)
 
 - English UI, docs and code comments

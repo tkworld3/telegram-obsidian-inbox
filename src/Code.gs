@@ -11,11 +11,21 @@
  *   ALLOWED_CHAT_ID  (required) Your chat ID. Leave empty at first: the bot will tell you yours.
  *   TIMEZONE         (optional) e.g. "America/New_York". Default: the script's time zone.
  *   SAVE_PHOTOS      (optional) "true" to save photos. Default: photos are skipped, captions are kept.
+ *   BLOCKED_EXTENSIONS (optional) Comma-separated file extensions never saved to Drive.
+ *                    Default: executables, scripts, installers and macro-enabled Office files (see DEFAULT_BLOCKED).
  *
  * Never paste your token into this code. Put it in Script Properties only.
  */
 
 const MAX_BYTES = 20 * 1024 * 1024; // Telegram bots can download files up to 20 MB
+
+// Files that could run code on your computers after Drive syncs them. Never saved.
+const DEFAULT_BLOCKED = [
+  'exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'dll', 'sys', 'reg', 'lnk', 'url',
+  'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'hta', 'jar', 'sh', 'command',
+  'apk', 'dmg', 'pkg', 'app', 'iso', 'img', 'msix', 'appx',
+  'docm', 'xlsm', 'pptm', 'dotm', 'xltm', 'xlam'
+];
 
 function props_() {
   return PropertiesService.getScriptProperties();
@@ -33,8 +43,19 @@ function cfg_() {
     folderId: folderId,
     allowed: (p.getProperty('ALLOWED_CHAT_ID') || '').trim(),
     tz: (p.getProperty('TIMEZONE') || '').trim() || Session.getScriptTimeZone(),
-    savePhotos: (p.getProperty('SAVE_PHOTOS') || '').trim().toLowerCase() === 'true'
+    savePhotos: (p.getProperty('SAVE_PHOTOS') || '').trim().toLowerCase() === 'true',
+    blocked: blockedList_(p.getProperty('BLOCKED_EXTENSIONS'))
   };
+}
+
+function blockedList_(value) {
+  if (value === null || value === undefined || !String(value).trim()) return DEFAULT_BLOCKED;
+  return String(value).split(',').map(function (s) { return s.trim().toLowerCase().replace(/^\./, ''); }).filter(Boolean);
+}
+
+function extOf_(name) {
+  const m = /\.([^.]+)$/.exec(String(name || ''));
+  return m ? m[1].toLowerCase() : '';
 }
 
 function tg_(method, payload) {
@@ -100,7 +121,9 @@ function poll() {
         });
         return;
       }
-      if (chatId !== c.allowed) return; // ignore everyone else
+      // Only your private chat with the bot: both the chat and the sender must be you.
+      // (In a group, chat.id is the group's ID, so a bot added to a group is ignored too.)
+      if (chatId !== c.allowed || !m.from || String(m.from.id) !== c.allowed) return;
 
       try {
         const saved = saveMessage_(folder, m, c);
@@ -144,6 +167,10 @@ function saveMessage_(folder, m, c) {
   const attached = [];
   const skipped = [];
   files.forEach(function (f) {
+    if (c.blocked.indexOf(extOf_(f.name)) !== -1) {
+      skipped.push(f.name + ' (blocked file type)');
+      return;
+    }
     if (f.size && f.size > MAX_BYTES) {
       skipped.push(f.name + ' (over 20 MB)');
       return;
@@ -187,7 +214,7 @@ function saveMessage_(folder, m, c) {
     attached.forEach(function (a) { body.push('![[' + a + ']]'); });
   }
   if (skipped.length) {
-    body.push('', '> Not saved because of size: ' + skipped.join(', '));
+    body.push('', '> Not saved: ' + skipped.join(', '));
   }
 
   const noteName = stamp + '_' + (titleOf_(text) || (files.length ? 'attachment' : 'note')) + '.md';

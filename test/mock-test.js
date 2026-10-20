@@ -41,7 +41,7 @@ function makeEnv(extraProps) {
   return env;
 }
 
-const msg = (id, extra) => ({ update_id: 100 + id, message: Object.assign({ message_id: id, date: 0, chat: { id: 555 } }, extra) });
+const msg = (id, extra) => ({ update_id: 100 + id, message: Object.assign({ message_id: id, date: 0, chat: { id: 555, type: 'private' }, from: { id: 555 } }, extra) });
 
 // 1) No ALLOWED_CHAT_ID yet: nothing is saved, the bot replies with the chat ID
 let env = makeEnv();
@@ -64,12 +64,17 @@ env.updates = [
   msg(5, { document: { file_id: 'd', file_size: 30e6, file_name: 'big.pdf' } }),
   msg(6, { photo: [{ file_id: 'p' }] }),
   msg(7, { document: { file_id: 'i', file_name: 'shot.png', mime_type: 'image/png' } }),
-  msg(8, { document: { file_id: 'f', file_size: 1000, file_name: 'guide.pdf', mime_type: 'application/pdf' } })
+  msg(8, { document: { file_id: 'f', file_size: 1000, file_name: 'guide.pdf', mime_type: 'application/pdf' } }),
+  msg(10, { caption: 'installer', document: { file_id: 'x', file_size: 1000, file_name: 'setup.EXE' } }),
+  msg(11, { text: 'sender spoof', from: { id: 777 } })
 ];
 env.poll();
 
 const notes = env.created.filter(c => c.name.endsWith('.md'));
-assert.strictEqual(notes.length, 4, 'only my 4 messages with text/files become notes');
+assert.strictEqual(notes.length, 5, 'only my 5 messages with text/files become notes');
+assert.ok(!env.created.some(c => (c.data || '').includes('sender spoof')), 'a different sender in the same chat is ignored');
+assert.ok(!env.created.some(c => /\.exe$/i.test(c.name)), 'executables are never saved');
+assert.ok(notes.find(n => n.name.includes('installer')).data.includes('blocked file type'), 'blocked file is reported in the note');
 assert.ok(!env.created.some(c => (c.data || '').includes('stranger')), 'strangers are ignored');
 assert.ok(!env.created.some(c => /\.(jpg|png)$/.test(c.name)), 'photos are not saved by default');
 assert.ok(env.created.some(c => c.name.endsWith('_guide.pdf')), 'regular files are saved');
@@ -80,7 +85,7 @@ assert.ok(fwd.data.includes('https://example.com/a'));
 assert.ok(!fwd.data.includes('![['), 'caption kept, photo dropped');
 assert.ok(notes.some(n => n.name.endsWith('_link.md')));
 assert.ok(notes.find(n => n.name.endsWith('_attachment.md')).data.includes('over 20 MB'));
-assert.strictEqual(env.props.OFFSET, '109');
+assert.strictEqual(env.props.OFFSET, '112');
 
 // 3) Running again saves nothing new
 const before = env.created.length;
@@ -93,5 +98,12 @@ env.updates = [msg(9, { photo: [{ file_id: 's' }, { file_id: 'L' }] })];
 env.poll();
 assert.ok(env.created.some(c => c.name.endsWith('_photo.jpg')), 'photo saved when enabled');
 assert.ok(env.created.find(c => c.name.endsWith('.md')).data.includes('![[2026-10-20_151000_9_photo.jpg]]'));
+
+// 5) BLOCKED_EXTENSIONS overrides the default list
+env = makeEnv({ ALLOWED_CHAT_ID: '555', BLOCKED_EXTENSIONS: '.pdf, zip' });
+env.updates = [msg(12, { document: { file_id: 'a', file_size: 10, file_name: 'a.pdf' } }), msg(13, { document: { file_id: 'b', file_size: 10, file_name: 'b.exe' } })];
+env.poll();
+assert.ok(!env.created.some(c => c.name.endsWith('a.pdf')), 'custom list blocks pdf');
+assert.ok(env.created.some(c => c.name.endsWith('b.exe')), 'custom list replaces the default list');
 
 console.log('All tests passed');
