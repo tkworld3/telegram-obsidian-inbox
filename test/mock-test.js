@@ -52,18 +52,24 @@ updates.push({ update_id: 12, message: {
 } });
 updates.push({ update_id: 13, message: { message_id: 4, date: 0, chat: { id: 555 }, text: 'https://x.com/abc' } });
 updates.push({ update_id: 14, message: { message_id: 5, date: 0, chat: { id: 555 }, document: { file_id: 'd', file_size: 30e6, file_name: 'big.pdf' } } });
+updates.push({ update_id: 15, message: { message_id: 6, date: 0, chat: { id: 555 }, photo: [{ file_id: 'p' }] } });
+updates.push({ update_id: 16, message: { message_id: 7, date: 0, chat: { id: 555 }, document: { file_id: 'i', file_name: 'shot.png', mime_type: 'image/png' } } });
+updates.push({ update_id: 17, message: { message_id: 8, date: 0, chat: { id: 555 }, document: { file_id: 'f', file_size: 1000, file_name: 'guide.pdf', mime_type: 'application/pdf' } } });
 ctx.poll();
 
 const notes = created.filter(c => c.name.endsWith('.md'));
-assert.strictEqual(notes.length, 3, '내 메시지 3건만 노트로 저장');
+assert.strictEqual(notes.length, 4, '글이 있는 내 메시지 4건만 노트로 저장 (사진만 보낸 2건 제외)');
+assert.ok(!created.some(c => /\.(jpg|png)$/.test(c.name)), '사진·이미지 파일은 저장하지 않음');
+assert.ok(created.some(c => c.name.endsWith('_guide.pdf')), 'PDF 같은 일반 파일은 저장');
+assert.strictEqual(sent.filter(m => m.text.includes('사진은 저장하지 않아요')).length, 2, '사진만 보내면 안내 답장');
 assert.ok(!created.some(c => (c.data || '').includes('spam')), '다른 사람 메시지 무시');
 const photoNote = notes.find(n => n.name.includes('NotebookLM'));
 assert.ok(photoNote.data.includes('forwarded_from: "AI 채널"'));
 assert.ok(photoNote.data.includes('https://example.com/a'));
-assert.ok(photoNote.data.includes('![[2026-10-20_151000_3_사진.jpg]]'));
+assert.ok(!photoNote.data.includes('![['), '사진에 붙은 글만 저장, 임베드 없음');
 assert.ok(notes.some(n => n.name.endsWith('_링크.md')));
 assert.ok(notes.find(n => n.name.endsWith('_첨부.md')).data.includes('20MB 초과'));
-assert.strictEqual(props.OFFSET, '15');
+assert.strictEqual(props.OFFSET, '18');
 
 // 3) 다시 실행해도 중복 저장 없음
 const before = created.length;

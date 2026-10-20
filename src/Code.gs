@@ -1,7 +1,8 @@
 /**
  * 텔레그램 → 옵시디언 Inbox 수집 봇 (Google Apps Script)
  *
- * 하는 일: 텔레그램 봇에게 보낸 메모·링크·사진·파일을 구글 드라이브 볼트의 "00 Inbox" 폴더에 저장한다.
+ * 하는 일: 텔레그램 봇에게 보낸 메모·링크·파일을 구글 드라이브 볼트의 "00 Inbox" 폴더에 저장한다.
+ * 사진(이미지 파일 포함)은 저장하지 않는다. 사진에 글이 붙어 있으면 글만 저장한다.
  * 정리(마크다운 노트 변환·분류)는 매일 저녁 Claude 예약 작업이 한다.
  *
  * 방식: 1분마다 텔레그램에 새 메시지가 있는지 확인(getUpdates 폴링). 웹 앱 배포나 서버가 필요 없다.
@@ -96,7 +97,8 @@ function poll() {
 
       try {
         const saved = saveMessage_(folder, m, c.token);
-        tg_('sendMessage', { chat_id: chatId, reply_to_message_id: m.message_id, text: '✅ Inbox에 저장했어요\n' + saved.join('\n') });
+        const reply = saved ? '✅ Inbox에 저장했어요\n' + saved.join('\n') : 'ℹ️ 사진은 저장하지 않아요. 글이나 링크를 함께 보내면 글만 저장합니다.';
+        tg_('sendMessage', { chat_id: chatId, reply_to_message_id: m.message_id, text: reply });
       } catch (err) {
         tg_('sendMessage', { chat_id: chatId, reply_to_message_id: m.message_id, text: '⚠️ 저장 실패: ' + err.message });
       }
@@ -106,7 +108,7 @@ function poll() {
   }
 }
 
-/** 메시지 하나를 Inbox에 저장하고, 저장한 파일 이름 목록을 돌려준다 */
+/** 메시지 하나를 Inbox에 저장하고, 저장한 파일 이름 목록을 돌려준다 (저장하지 않았으면 null) */
 function saveMessage_(folder, m, token) {
   const when = new Date(m.date * 1000);
   const stamp = Utilities.formatDate(when, TZ, 'yyyy-MM-dd_HHmmss') + '_' + m.message_id;
@@ -114,12 +116,14 @@ function saveMessage_(folder, m, token) {
   const text = m.text || m.caption || '';
   const entities = m.entities || m.caption_entities || [];
 
-  // 첨부 파일
+  // 사진은 저장하지 않는다 (사진으로 보낸 것, 이미지 파일로 보낸 것 모두)
+  const isImageDoc = !!(m.document && /^image\//.test(m.document.mime_type || ''));
+  const hasPhoto = !!(m.photo && m.photo.length) || isImageDoc;
+  if (hasPhoto && !text.trim()) return null; // 사진만 보낸 메시지는 노트도 만들지 않는다
+
+  // 첨부 파일 (사진 제외)
   const files = [];
-  if (m.photo && m.photo.length) {
-    files.push({ id: m.photo[m.photo.length - 1].file_id, name: stamp + '_사진.jpg' }); // 가장 큰 해상도
-  }
-  if (m.document) files.push({ id: m.document.file_id, size: m.document.file_size, name: stamp + '_' + safeName_(m.document.file_name || '파일') });
+  if (m.document && !isImageDoc) files.push({ id: m.document.file_id, size: m.document.file_size, name: stamp + '_' + safeName_(m.document.file_name || '파일') });
   if (m.voice) files.push({ id: m.voice.file_id, size: m.voice.file_size, name: stamp + '_음성.ogg' });
   if (m.audio) files.push({ id: m.audio.file_id, size: m.audio.file_size, name: stamp + '_' + safeName_(m.audio.file_name || '오디오.mp3') });
   if (m.video) files.push({ id: m.video.file_id, size: m.video.file_size, name: stamp + '_' + safeName_(m.video.file_name || '영상.mp4') });
